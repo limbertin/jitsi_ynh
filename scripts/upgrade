@@ -43,6 +43,15 @@ chmod -R o-rwx "$install_dir"
 chown -R "$app:$app" "$install_dir"
 
 #=================================================
+# REAPPLY CUSTOM BRANDING (watermark + CSS)
+#=================================================
+# _setup_sources above re-extracts the upstream jitsi-meet-web .deb, which wipes
+# anything we previously dropped in $install_dir/jitsi-meet-web. Reapply now.
+ynh_script_progression "Reapplying custom branding..."
+
+_apply_branding
+
+#=================================================
 # REPLACE JNIWRAPPER FOR ARMHF ARCHITECTURE IN JITSI-VIDEOBRIDGE
 #=================================================
 

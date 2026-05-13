@@ -75,6 +75,13 @@ chmod -R o-rwx "$install_dir"
 chown -R "$app:$app" "$install_dir"
 
 #=================================================
+# APPLY CUSTOM BRANDING (watermark + CSS)
+#=================================================
+ynh_script_progression "Applying custom branding..."
+
+_apply_branding
+
+#=================================================
 # REPLACE JNIWRAPPER FOR ARMHF ARCHITECTURE IN JITSI-VIDEOBRIDGE
 #=================================================
 

@@ -28,6 +28,15 @@ chmod -R o-rwx "$install_dir"
 chown -R "$app:$app" "$install_dir"
 
 #=================================================
+# REAPPLY CUSTOM BRANDING (watermark + CSS)
+#=================================================
+# Backups taken before branding existed won't contain our overlays. Cheap to reapply
+# unconditionally; the install step is idempotent.
+ynh_script_progression "Reapplying custom branding..."
+
+_apply_branding
+
+#=================================================
 # CONFIGURE PROSODY
 #=================================================
 ynh_script_progression "Configuring prosody..."
