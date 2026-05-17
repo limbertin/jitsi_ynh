@@ -5,6 +5,7 @@
 #=================================================
 
 source _common.sh
+source _recorder.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
@@ -185,6 +186,18 @@ ynh_script_progression "Starting $app's systemd service..."
 
 ynh_systemctl --service="$app-jicofo" --action="start" --log_path="/var/log/$app/$app-jicofo.log"
 ynh_systemctl --service="$app-videobridge" --action="start" --log_path="/var/log/$app/$app-videobridge.log"
+
+#=================================================
+# BUILD GST-MEET RECORDER (LONG: 25-40 MIN ON ARM64)
+#=================================================
+# Failure here is non-fatal — Jitsi itself is already up and serving. The admin
+# can retry with `sudo bash /var/www/$app/../settings/scripts/_recorder.sh build`.
+ynh_script_progression "Building gst-meet recorder (this can take 30+ minutes)..."
+
+mkdir -p /var/log/jitsi-recorder
+if ! _build_gst_meet 2>&1 | tee /var/log/jitsi-recorder/build.log; then
+    ynh_print_warn "gst-meet build failed — auto-recording will be unavailable. See /var/log/jitsi-recorder/build.log; retry manually with: bash $YNH_APP_BASEDIR/scripts/_recorder.sh build"
+fi
 
 #=================================================
 # END OF SCRIPT

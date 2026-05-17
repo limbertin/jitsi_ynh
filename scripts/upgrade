@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source _common.sh
+source _recorder.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
@@ -128,6 +129,19 @@ ynh_script_progression "Starting $app's systemd service..."
 
 ynh_systemctl --service="$app-jicofo" --action="start" --log_path="/var/log/$app/$app-jicofo.log"
 ynh_systemctl --service="$app-videobridge" --action="start" --log_path="/var/log/$app/$app-videobridge.log"
+
+#=================================================
+# REBUILD GST-MEET RECORDER IF PINNED COMMIT CHANGED
+#=================================================
+# _build_gst_meet is idempotent: if the installed binary already matches the
+# pinned commit, this is a no-op and adds zero time to the upgrade. Otherwise
+# rebuild takes 25-40 minutes on arm64. Failure is non-fatal.
+ynh_script_progression "Checking gst-meet recorder..."
+
+mkdir -p /var/log/jitsi-recorder
+if ! _build_gst_meet 2>&1 | tee -a /var/log/jitsi-recorder/build.log; then
+    ynh_print_warn "gst-meet build failed during upgrade — see /var/log/jitsi-recorder/build.log"
+fi
 
 #=================================================
 # END OF SCRIPT

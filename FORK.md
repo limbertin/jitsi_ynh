@@ -67,9 +67,67 @@ Replace the file in `conf/branding/`, commit, push, and run
 live immediately. For `all.css` you still need to do the manual merge step
 above on the VPS.
 
-## Auto-recording (planned — phases 2–5)
+## Auto-recording
 
-See `Tasks` in the project tracker. Recording runs on the host as a
-`gst-meet`-based bot triggered by a Prosody MUC hook for the configured room.
-Modes: `audio_only` / `smart_video` (screen-share priority, dominant-speaker
-fallback) / `disabled`, exposed in `config_panel.toml`.
+Recording runs on the host as a `gst-meet`-based bot triggered by a Prosody
+MUC hook for the configured room. Modes: `audio_only` / `smart_video`
+(screen-share priority, dominant-speaker fallback) / `disabled`, exposed in
+`config_panel.toml`.
+
+### Phase 2 — recorder build pipeline (this commit)
+
+`scripts/_recorder.sh` provides helpers that build `gst-meet` from a pinned
+upstream commit during `scripts/install` and `scripts/upgrade`. Everything
+the recorder needs lives under one prefix for trivial cleanup:
+
+```
+/opt/jitsi-recorder/
+├── bin/gst-meet              ← the installed binary
+├── rust/{cargo,rustup}/      ← isolated Rust toolchain (~1.5 GB)
+├── src/                      ← pinned gst-meet checkout (target/ deleted post-build)
+└── .commit                   ← SHA of the commit the binary was built from
+```
+
+**Memory safety.** Cargo's LLVM codegen phase peaks around 2–2.5 GB. If
+`MemAvailable + SwapFree` is below 2.5 GB at build time, `_install_temp_swap`
+creates a 4 GB swapfile at `/var/cache/jitsi-recorder.swap` and tears it down
+when the build finishes (success or failure — there's an EXIT trap).
+
+**Idempotency.** `_build_gst_meet` checks `/opt/jitsi-recorder/.commit`
+against the pinned SHA and skips the build entirely if they match. Most
+upgrades will add zero recorder time; only commit bumps trigger a rebuild.
+
+**Build time:** 25–40 minutes on arm64 with `-j1`. The install/upgrade
+script runs Jitsi service startup *before* the build, so the meeting server
+is up and serving while the recorder builds in the background.
+
+**Failure handling.** If the build fails, the install/upgrade script logs a
+warning and continues — Jitsi itself remains fully functional, just without
+the recorder. The admin can retry manually:
+
+```bash
+sudo bash /var/www/jitsi/../settings/scripts/_recorder.sh build
+# or equivalently from the fork checkout:
+sudo bash /path/to/jitsi_ynh/scripts/_recorder.sh build
+```
+
+The full build log is at `/var/log/jitsi-recorder/build.log`.
+
+### Bumping the pinned `gst-meet` commit
+
+Edit `GST_MEET_COMMIT` at the top of `scripts/_recorder.sh`, push, run
+`yunohost app upgrade jitsi`. The idempotency check will see the mismatch
+and rebuild. Run a smoke test afterwards:
+
+```bash
+sudo bash /path/to/jitsi_ynh/scripts/_recorder.sh smoke
+```
+
+### Phases 3–5 (not yet implemented)
+
+- Phase 3: Rust patch to `gst-meet`'s `examples/record.rs` adding the
+  screen-share-priority → dominant-speaker fallback state machine.
+- Phase 4: Prosody `mod_auto_record.lua` + `jitsi-recorder@.service`
+  systemd template + retention cron.
+- Phase 5: `config_panel.toml` `[main.autorecord]` section exposing mode,
+  room name, retention, and the low-memory fallback threshold.
