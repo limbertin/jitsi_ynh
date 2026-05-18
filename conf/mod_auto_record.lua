@@ -70,9 +70,15 @@ local function trigger(action, room_localpart)
         module:log("warn", "refusing to %s recorder for unsafe room name '%s'", action, room_localpart)
         return
     end
-    local cmd = "systemctl --no-block " .. action .. " jitsi-recorder@" .. unit .. ".service"
+    -- sudo is required: prosody runs as the prosody user and cannot talk to
+    -- the system D-Bus directly. /etc/sudoers.d/jitsi-recorder-prosody grants
+    -- NOPASSWD permission for exactly these two commands.
+    local cmd = "sudo /usr/bin/systemctl --no-block " .. action .. " jitsi-recorder@" .. unit .. ".service"
     module:log("info", "%s", cmd)
-    os.execute(cmd)
+    local ok = os.execute(cmd)
+    if not ok then
+        module:log("error", "command failed (exit non-zero): %s", cmd)
+    end
 end
 
 module:hook("muc-occupant-joined", function (event)

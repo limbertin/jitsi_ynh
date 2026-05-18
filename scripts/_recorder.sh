@@ -50,6 +50,7 @@ RECORDER_PLUGIN_DIR="/var/lib/jitsi-recorder/prosody-plugins"
 RECORDER_LOG_DIR="/var/log/jitsi-recorder"
 RECORDER_SYSTEMD_UNIT="/etc/systemd/system/jitsi-recorder@.service"
 RECORDER_CRON="/etc/cron.daily/jitsi-recorder-retention"
+RECORDER_SUDOERS="/etc/sudoers.d/jitsi-recorder-prosody"
 
 # ---- helpers ----------------------------------------------------------------
 
@@ -242,6 +243,23 @@ EOF
     _log "wrote $RECORDER_CREDENTIALS (mode 0600 root:root)"
 }
 
+_install_sudoers_rule() {
+    # Grant the prosody user NOPASSWD permission to start/stop only the
+    # jitsi-recorder template units. Required because prosody has no D-Bus
+    # access and os.execute("systemctl ...") would fail silently without this.
+    cat > "$RECORDER_SUDOERS" <<'EOF'
+# Managed by jitsi_ynh fork (Essential Energy). Removed by scripts/remove.
+prosody ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block start jitsi-recorder@*.service, /usr/bin/systemctl --no-block stop jitsi-recorder@*.service
+EOF
+    chmod 0440 "$RECORDER_SUDOERS"
+    if ! visudo -c -f "$RECORDER_SUDOERS" >/dev/null 2>&1; then
+        rm -f "$RECORDER_SUDOERS"
+        _log "ERROR: sudoers syntax check failed — rule not installed"
+        return 1
+    fi
+    _log "installed $RECORDER_SUDOERS"
+}
+
 _install_auto_record() {
     # Top-level entry point called from scripts/install + scripts/upgrade.
     _install_prosody_module
@@ -249,6 +267,7 @@ _install_auto_record() {
     _install_recorder_config
     _install_retention_cron
     _setup_recordings_dir
+    _install_sudoers_rule
 }
 
 _remove_auto_record() {
@@ -259,7 +278,7 @@ _remove_auto_record() {
         _log "stopping $unit"
         systemctl stop "$unit" || true
     done
-    rm -f -- "$RECORDER_SYSTEMD_UNIT" "$RECORDER_CRON"
+    rm -f -- "$RECORDER_SYSTEMD_UNIT" "$RECORDER_CRON" "$RECORDER_SUDOERS"
     rm -rf -- "$RECORDER_PLUGIN_DIR" "$RECORDER_CONFIG_DIR"
     systemctl daemon-reload || true
     _log "auto-record components removed (credentials at $RECORDER_CREDENTIALS deleted with $RECORDER_CONFIG_DIR)"
