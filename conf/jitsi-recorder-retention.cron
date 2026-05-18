@@ -1,0 +1,23 @@
+#!/bin/sh
+# /etc/cron.daily/jitsi-recorder-retention
+#
+# Delete .webm recordings older than RETENTION_DAYS. Configured via the
+# same /etc/jitsi-recorder/config that the systemd unit reads, so changing
+# the value in the YNH config_panel (Phase 5) takes effect on the next run.
+
+set -e
+
+[ -r /etc/jitsi-recorder/config ] && . /etc/jitsi-recorder/config
+
+DIR="${RECORDINGS_DIR:-/home/yunohost.app/jitsi/recordings}"
+DAYS="${RETENTION_DAYS:-365}"
+
+[ -d "$DIR" ] || exit 0
+
+# +N means strictly older than N days. Defensive: refuse silly values that
+# could nuke fresh recordings (e.g. RETENTION_DAYS=0 or negative).
+case "$DAYS" in
+    ''|*[!0-9]*|0) exit 0 ;;
+esac
+
+find "$DIR" -type f -name '*.webm' -mtime "+${DAYS}" -delete

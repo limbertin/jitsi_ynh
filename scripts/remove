@@ -69,10 +69,11 @@ ynh_script_progression "Removing various files..."
 ynh_safe_rm "/etc/$app"
 
 #=================================================
-# REMOVE GST-MEET RECORDER
+# REMOVE GST-MEET RECORDER + AUTO-RECORD
 #=================================================
-ynh_script_progression "Removing gst-meet recorder..."
+ynh_script_progression "Removing recorder components..."
 
+_remove_auto_record
 _remove_recorder
 
 #=================================================

@@ -41,6 +41,15 @@ SWAP_SIZE_MB="${SWAP_SIZE_MB:-4096}"
 # If MemAvailable + SwapFree >= this many KB, skip creating temp swap.
 SWAP_SKIP_THRESHOLD_KB="${SWAP_SKIP_THRESHOLD_KB:-2621440}"  # 2.5 GB
 
+# ---- auto-record (Phase 4) paths ------------------------------------------
+RECORDER_CONFIG_DIR="${RECORDER_CONFIG_DIR:-/etc/jitsi-recorder}"
+RECORDER_CONFIG="$RECORDER_CONFIG_DIR/config"
+RECORDER_RECORDINGS_DIR_DEFAULT="/home/yunohost.app/jitsi/recordings"
+RECORDER_PLUGIN_DIR="/var/lib/jitsi-recorder/prosody-plugins"
+RECORDER_LOG_DIR="/var/log/jitsi-recorder"
+RECORDER_SYSTEMD_UNIT="/etc/systemd/system/jitsi-recorder@.service"
+RECORDER_CRON="/etc/cron.daily/jitsi-recorder-retention"
+
 # ---- helpers ----------------------------------------------------------------
 
 _log() { echo "[recorder] $*"; }
@@ -159,6 +168,80 @@ _install_pipeline_wrapper() {
     _log "installed pipeline wrapper to $RECORDER_PREFIX/recorder-pipeline.sh"
 }
 
+# ---- Phase 4: auto-record install helpers ---------------------------------
+
+_install_prosody_module() {
+    local src_dir="../conf"
+    [[ -d "$src_dir" ]] || src_dir="${YNH_APP_BASEDIR:-.}/conf"
+    install -m 0644 -D "$src_dir/mod_auto_record.lua" "$RECORDER_PLUGIN_DIR/mod_auto_record.lua"
+    _log "installed prosody mod_auto_record.lua into $RECORDER_PLUGIN_DIR"
+}
+
+_install_systemd_template() {
+    local src_dir="../conf"
+    [[ -d "$src_dir" ]] || src_dir="${YNH_APP_BASEDIR:-.}/conf"
+    install -m 0644 "$src_dir/jitsi-recorder@.service" "$RECORDER_SYSTEMD_UNIT"
+    systemctl daemon-reload
+    _log "installed $RECORDER_SYSTEMD_UNIT"
+}
+
+_install_recorder_config() {
+    # Preserves admin edits: only deploys the default if the file doesn't exist.
+    # Phase 5 will overwrite this file on config_panel changes.
+    local src_dir="../conf"
+    [[ -d "$src_dir" ]] || src_dir="${YNH_APP_BASEDIR:-.}/conf"
+    mkdir -p "$RECORDER_CONFIG_DIR"
+    if [[ -f "$RECORDER_CONFIG" ]]; then
+        _log "$RECORDER_CONFIG already exists, preserving admin's values"
+    else
+        install -m 0644 "$src_dir/jitsi-recorder.config" "$RECORDER_CONFIG"
+        _log "installed default $RECORDER_CONFIG"
+    fi
+}
+
+_install_retention_cron() {
+    local src_dir="../conf"
+    [[ -d "$src_dir" ]] || src_dir="${YNH_APP_BASEDIR:-.}/conf"
+    install -m 0755 "$src_dir/jitsi-recorder-retention.cron" "$RECORDER_CRON"
+    _log "installed retention cron at $RECORDER_CRON"
+}
+
+_setup_recordings_dir() {
+    # Honor admin's RECORDINGS_DIR setting if /etc/jitsi-recorder/config has it.
+    local dir="$RECORDER_RECORDINGS_DIR_DEFAULT"
+    if [[ -r "$RECORDER_CONFIG" ]]; then
+        local cfg_dir
+        cfg_dir=$(awk -F= '/^RECORDINGS_DIR=/ {print $2; exit}' "$RECORDER_CONFIG" | tr -d '"' | tr -d "'")
+        [[ -n "$cfg_dir" ]] && dir="$cfg_dir"
+    fi
+    mkdir -p "$dir" "$RECORDER_LOG_DIR"
+    chmod 0755 "$dir" "$RECORDER_LOG_DIR"
+    _log "ensured $dir and $RECORDER_LOG_DIR exist"
+}
+
+_install_auto_record() {
+    # Top-level entry point called from scripts/install + scripts/upgrade.
+    _install_prosody_module
+    _install_systemd_template
+    _install_recorder_config
+    _install_retention_cron
+    _setup_recordings_dir
+}
+
+_remove_auto_record() {
+    # Stop any running recorder instances before yanking the unit file.
+    local units
+    units=$(systemctl list-units --no-legend --no-pager 'jitsi-recorder@*.service' 2>/dev/null | awk '{print $1}' || true)
+    for unit in $units; do
+        _log "stopping $unit"
+        systemctl stop "$unit" || true
+    done
+    rm -f -- "$RECORDER_SYSTEMD_UNIT" "$RECORDER_CRON"
+    rm -rf -- "$RECORDER_PLUGIN_DIR" "$RECORDER_CONFIG_DIR"
+    systemctl daemon-reload || true
+    _log "auto-record components removed"
+}
+
 _remove_recorder() {
     _log "removing $RECORDER_PREFIX"
     rm -rf -- "$RECORDER_PREFIX"
@@ -170,10 +253,11 @@ _remove_recorder() {
 # If this file is being EXECUTED (not sourced), accept a subcommand.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "${1:-}" in
-        build)    _build_gst_meet ;;
-        pipeline) _install_pipeline_wrapper ;;
-        smoke)    _smoke_test_gst_meet ;;
-        remove)   _remove_recorder ;;
-        *)        echo "usage: $0 {build|pipeline|smoke|remove}" >&2; exit 2 ;;
+        build)        _build_gst_meet ;;
+        pipeline)     _install_pipeline_wrapper ;;
+        auto-record)  _install_auto_record ;;
+        smoke)        _smoke_test_gst_meet ;;
+        remove)       _remove_recorder ; _remove_auto_record ;;
+        *)            echo "usage: $0 {build|pipeline|auto-record|smoke|remove}" >&2; exit 2 ;;
     esac
 fi

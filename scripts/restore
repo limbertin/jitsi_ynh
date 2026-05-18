@@ -101,6 +101,15 @@ ynh_script_progression "Reloading NGINX web server and $app's service..."
 ynh_systemctl --service="$app-jicofo" --action="start" --log_path="/var/log/$app/$app-jicofo.log"
 ynh_systemctl --service="$app-videobridge" --action="start" --log_path="/var/log/$app/$app-videobridge.log"
 
+# Restore auto-record glue. The gst-meet binary at /opt/jitsi-recorder/ is
+# rebuilt from scratch (backup doesn't capture it). Build is idempotent so
+# the standard install path applies.
+_install_pipeline_wrapper
+_install_auto_record
+if ! _build_gst_meet 2>&1 | tee -a /var/log/jitsi-recorder/build.log; then
+    ynh_print_warn "gst-meet build failed during restore — see /var/log/jitsi-recorder/build.log"
+fi
+
 ynh_systemctl --service=nginx --action=reload
 
 #=================================================

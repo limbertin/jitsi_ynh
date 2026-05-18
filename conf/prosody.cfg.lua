@@ -1,4 +1,4 @@
-plugin_paths = { "__INSTALL_DIR__/jitsi-meet-prosody/" }
+plugin_paths = { "__INSTALL_DIR__/jitsi-meet-prosody/", "/var/lib/jitsi-recorder/prosody-plugins/" }
 
 -- domain mapper options, must at least have domain base set to use the mapper
 muc_mapper_domain_base = "__DOMAIN__";
@@ -76,12 +76,17 @@ VirtualHost "guest.__DOMAIN__"
 Component "conference.__DOMAIN__" "muc"
     restrict_room_creation = true
     storage = "memory"
+    -- auto_record: triggers jitsi-recorder@<room>.service when this room fills.
+    -- Phase 5 will template this value from the YNH config_panel; default = "equipe".
+    auto_record_room = "equipe"
+    auto_record_min_occupants = 2
     modules_enabled = {
         "muc_meeting_id";
         "muc_domain_mapper";
         "polls";
         --"token_verification";
         "muc_rate_limit";
+        "auto_record";
     }
     admins = { "__FOCUS_USER__@auth.__DOMAIN__" }
     muc_room_locking = false

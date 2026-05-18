@@ -1,0 +1,43 @@
+[Unit]
+Description=Jitsi auto-recorder for room %i
+After=network-online.target prosody.service jitsi-jicofo.service jitsi-videobridge.service
+Wants=network-online.target
+# Don't try to record if the upstream stack is down
+Requires=prosody.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/jitsi-recorder/config
+
+# recorder-pipeline.sh takes <room> <output-file> [<mode>]. The systemd
+# template gives us %i = sanitized instance name (the room localpart).
+# Output filename is composed inline so each invocation gets a fresh file.
+ExecStart=/bin/bash -c ' \
+    : "${RECORDINGS_DIR:=/home/yunohost.app/jitsi/recordings}"; \
+    : "${RECORDING_MODE:=audio_only}"; \
+    mkdir -p "$RECORDINGS_DIR"; \
+    exec /opt/jitsi-recorder/recorder-pipeline.sh "%i" "${RECORDINGS_DIR}/%i-$(date -u +%%Y%%m%%dT%%H%%M%%S).webm" "$RECORDING_MODE" \
+'
+
+# Give gst-meet time to flush the webmmux trailer when we SIGTERM it.
+TimeoutStopSec=20
+KillSignal=SIGTERM
+SendSIGKILL=yes
+
+# If the bot crashes or exits, don't loop — the prosody hook will start a fresh
+# one next time the room fills up.
+Restart=no
+
+# Resource fence: keep the recorder from OOM-ing the box even in pathological
+# pipelines. 400 MB is comfortable headroom over the audio-only baseline
+# (~80 MB RSS observed) and tight enough to catch a runaway video pipeline.
+MemoryMax=400M
+CPUQuota=120%
+
+# Combined log file for all instances
+StandardOutput=append:/var/log/jitsi-recorder/runtime.log
+StandardError=append:/var/log/jitsi-recorder/runtime.log
+SyslogIdentifier=jitsi-recorder@%i
+
+# No [Install] section: this is a template unit, started directly by the
+# prosody mod_auto_record hook via `systemctl start jitsi-recorder@<room>`.
