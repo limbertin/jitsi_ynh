@@ -12,6 +12,8 @@ external_services = {
 
 cross_domain_bosh = false;
 consider_bosh_secure = true;
+cross_domain_websocket = false;
+consider_websocket_secure = true;
 -- https_ports = { }; -- Remove this line to prevent listening on port 5284
 
 -- https://ssl-config.mozilla.org/#server=haproxy&version=2.1&config=intermediate&openssl=1.1.0g&guideline=5.4
@@ -48,9 +50,10 @@ VirtualHost "__DOMAIN__"
     av_moderation_component = "avmoderation.__DOMAIN__"
     speakerstats_component = "speakerstats.__DOMAIN__"
     conference_duration_component = "conferenceduration.__DOMAIN__"
-    -- we need bosh
+    -- we need bosh; websocket is required by gst-meet (recorder bot)
     modules_enabled = {
         "bosh";
+        "websocket";
         "pubsub";
         "ping"; -- Enable mod_ping
         "speakerstats";

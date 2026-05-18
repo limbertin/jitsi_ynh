@@ -142,6 +142,7 @@ mkdir -p /var/log/jitsi-recorder
 if ! _build_gst_meet 2>&1 | tee -a /var/log/jitsi-recorder/build.log; then
     ynh_print_warn "gst-meet build failed during upgrade — see /var/log/jitsi-recorder/build.log"
 fi
+_install_pipeline_wrapper
 
 #=================================================
 # END OF SCRIPT

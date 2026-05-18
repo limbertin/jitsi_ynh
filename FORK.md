@@ -123,11 +123,67 @@ and rebuild. Run a smoke test afterwards:
 sudo bash /path/to/jitsi_ynh/scripts/_recorder.sh smoke
 ```
 
-### Phases 3–5 (not yet implemented)
+### Phase 3a — audio-only recording wrapper (this commit)
 
-- Phase 3: Rust patch to `gst-meet`'s `examples/record.rs` adding the
-  screen-share-priority → dominant-speaker fallback state machine.
-- Phase 4: Prosody `mod_auto_record.lua` + `jitsi-recorder@.service`
-  systemd template + retention cron.
+`conf/recorder-pipeline.sh` is the shell-level entry point that the systemd
+unit (Phase 4) will exec. It takes `<room> <output-file> [<mode>]`, picks a
+GStreamer pipeline based on `<mode>`, and invokes `gst-meet` with the
+arguments that match this YNH-flavored Jitsi setup.
+
+**YNH Jitsi auth/routing quirks the wrapper handles by default:**
+
+| Argument | Default | Why |
+|---|---|---|
+| `--xmpp-domain` | `guest.${XMPP_HOST}` | Main vhost uses internal_hashed; only `guest.*` accepts anonymous SASL. The web client uses guest too. |
+| `--muc-domain` | `conference.${XMPP_HOST}` | MUC component address — does NOT inherit from xmpp-domain. |
+| `--focus-jid` | `focus.${XMPP_HOST}` | The client_proxy *component* address from prosody.cfg.lua. Sending to `focus@auth.*` (user JID) silently fails. |
+
+**Modes:**
+- `audio_only` (default) — `audiomixer ! audioconvert ! opusenc ! webmmux ! filesink`. ~80 MB RSS during a call.
+- `smart_video` — placeholder, falls back to `audio_only` with a warning. Will activate after Phase 3b lands.
+- `disabled` — exit 0 without recording.
+
+A low-memory safety net forces `audio_only` if `MemAvailable` at start is
+below `LOW_MEM_KB` (default 256 MB), regardless of requested mode.
+
+The wrapper uses `exec` so SIGTERM from systemd reaches `gst-meet` directly,
+giving it a chance to flush the webmmux and close the file cleanly.
+
+### Prerequisite: prosody mod_websocket
+
+`gst-meet` only speaks WebSocket; it doesn't support BOSH. This fork's
+`conf/prosody.cfg.lua` enables `mod_websocket` on the main VirtualHost (the
+upstream YNH template only enables `mod_bosh`, which is why the web client
+silently falls back to long-polling). This change is benign for non-recorder
+clients — modern web clients prefer WebSocket when available.
+
+### KNOWN ISSUE: JVB health checks (separate from this fork)
+
+On the box where this was developed, jicofo logs **"Health check timed out
+for Bridge..."** repeatedly (32 occurrences observed pre-development). When
+this is happening, jicofo replies `service-unavailable` to conference-
+allocation IQs, including the recorder's. Symptoms in `gst-meet` logs:
+
+```
+INFO  Logged in anonymously
+ERROR error=focus IQ failed
+ERROR fatal (in read loop): focus IQ failed
+```
+
+This is **not** a recorder bug; it affects any client trying to allocate a
+new conference. Two- person meetings may still work because Jitsi falls back
+to P2P. To debug, check `/var/log/jitsi/jitsi-videobridge.log` and the JVB
+↔ prosody secret in `/etc/jitsi/videobridge/sip-communicator.properties`.
+Out of scope for this fork.
+
+### Phases 4–5 (planned)
+
+- Phase 4: Prosody `mod_auto_record.lua` watches `muc-occupant-joined` for
+  the configured room and launches `jitsi-recorder@<room>.service`. Plus a
+  retention cron.
 - Phase 5: `config_panel.toml` `[main.autorecord]` section exposing mode,
   room name, retention, and the low-memory fallback threshold.
+
+### Phase 3b (deferred indefinitely)
+
+Smart-video Rust patch on `gst-meet/src/main.rs`. Tracked but not scheduled.

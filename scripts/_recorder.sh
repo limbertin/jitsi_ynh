@@ -146,6 +146,19 @@ _smoke_test_gst_meet() {
     _log "smoke test passed"
 }
 
+_install_pipeline_wrapper() {
+    # The wrapper script ships in conf/recorder-pipeline.sh in the fork and is
+    # installed alongside the binary. Idempotent — install(1) overwrites if changed.
+    local src_dir="../conf"
+    [[ -d "$src_dir" ]] || src_dir="${YNH_APP_BASEDIR:-.}/conf"
+    if [[ ! -f "$src_dir/recorder-pipeline.sh" ]]; then
+        _log "WARN: $src_dir/recorder-pipeline.sh not found, skipping pipeline wrapper install"
+        return 0
+    fi
+    install -m 0755 -D "$src_dir/recorder-pipeline.sh" "$RECORDER_PREFIX/recorder-pipeline.sh"
+    _log "installed pipeline wrapper to $RECORDER_PREFIX/recorder-pipeline.sh"
+}
+
 _remove_recorder() {
     _log "removing $RECORDER_PREFIX"
     rm -rf -- "$RECORDER_PREFIX"
@@ -157,9 +170,10 @@ _remove_recorder() {
 # If this file is being EXECUTED (not sourced), accept a subcommand.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "${1:-}" in
-        build)  _build_gst_meet ;;
-        smoke)  _smoke_test_gst_meet ;;
-        remove) _remove_recorder ;;
-        *)      echo "usage: $0 {build|smoke|remove}" >&2; exit 2 ;;
+        build)    _build_gst_meet ;;
+        pipeline) _install_pipeline_wrapper ;;
+        smoke)    _smoke_test_gst_meet ;;
+        remove)   _remove_recorder ;;
+        *)        echo "usage: $0 {build|pipeline|smoke|remove}" >&2; exit 2 ;;
     esac
 fi

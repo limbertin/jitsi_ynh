@@ -198,6 +198,7 @@ mkdir -p /var/log/jitsi-recorder
 if ! _build_gst_meet 2>&1 | tee /var/log/jitsi-recorder/build.log; then
     ynh_print_warn "gst-meet build failed — auto-recording will be unavailable. See /var/log/jitsi-recorder/build.log; retry manually with: bash $YNH_APP_BASEDIR/scripts/_recorder.sh build"
 fi
+_install_pipeline_wrapper
 
 #=================================================
 # END OF SCRIPT
