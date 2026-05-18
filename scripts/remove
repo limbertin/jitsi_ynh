@@ -30,6 +30,9 @@ ynh_script_progression "Reconfiguring Prosody..."
 
 prosodyctl deluser "$focus_user@auth.$domain" || true
 prosodyctl deluser "$videobridge_user@auth.$domain" || true
+recorder_user=$(ynh_app_setting_get --key=recorder_user 2>/dev/null || echo "recorder")
+# YunoHost user (not a prosody-local user). Delete it from the directory.
+yunohost user delete "$recorder_user" --purge 2>/dev/null || true
 
 # Remove domain conf template
 ynh_safe_rm "/etc/prosody/conf.d/$domain.cfg.lua"

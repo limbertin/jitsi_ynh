@@ -13,6 +13,29 @@ ynh_systemctl --service="$app-videobridge" --action="stop" --log_path="/var/log/
 ynh_systemctl --service="$app-jicofo" --action="stop" --log_path="/var/log/$app/$app-jicofo.log"
 
 #=================================================
+# RECORDER CREDENTIALS (idempotent: generate once, reuse forever)
+#=================================================
+ynh_app_setting_set_default --key=recorder_user --value="recorder"
+recorder_user=$(ynh_app_setting_get --key=recorder_user)
+recorder_password=$(ynh_app_setting_get --key=recorder_password || true)
+if [[ -z "$recorder_password" ]]; then
+    recorder_password=$(ynh_string_random --length=24)
+    ynh_app_setting_set --key=recorder_password --value="$recorder_password"
+fi
+# Idempotent: create the recorder YunoHost user if absent, otherwise re-apply
+# the password from app settings (covers password rotations, restore scenarios).
+if yunohost user info "$recorder_user" >/dev/null 2>&1; then
+    yunohost user update "$recorder_user" --password "$recorder_password" >/dev/null \
+        || ynh_print_warn "failed to update recorder user password"
+else
+    yunohost user create "$recorder_user" \
+        --fullname "Auto Recorder" \
+        --domain "$domain" \
+        --password "$recorder_password" >/dev/null \
+        || ynh_print_warn "failed to create recorder YNH user — recording will not work until manually created"
+fi
+
+#=================================================
 # ENSURE DOWNWARD COMPATIBILITY
 #=================================================
 ynh_script_progression "Ensuring downward compatibility..."
@@ -148,6 +171,7 @@ if ! _build_gst_meet 2>&1 | tee -a /var/log/jitsi-recorder/build.log; then
 fi
 _install_pipeline_wrapper
 _install_auto_record
+_write_recorder_credentials "$recorder_user" "$domain" "$recorder_password"
 
 #=================================================
 # END OF SCRIPT

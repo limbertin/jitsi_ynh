@@ -63,6 +63,20 @@ prosodyctl register "$focus_user" "auth.$domain" "$focus_password"
 prosodyctl register "$videobridge_user" "auth.$domain" "$videobridge_secret"
 prosodyctl mod_roster_command subscribe "$focus_user.$domain" "$focus_user@auth.$domain"
 
+# Re-create the recorder YunoHost user from the saved app-setting password.
+recorder_user=$(ynh_app_setting_get --key=recorder_user 2>/dev/null || echo "recorder")
+recorder_password=$(ynh_app_setting_get --key=recorder_password 2>/dev/null)
+if [[ -n "$recorder_password" ]]; then
+    if yunohost user info "$recorder_user" >/dev/null 2>&1; then
+        yunohost user update "$recorder_user" --password "$recorder_password" >/dev/null || true
+    else
+        yunohost user create "$recorder_user" \
+            --fullname "Auto Recorder" \
+            --domain "$domain" \
+            --password "$recorder_password" >/dev/null || true
+    fi
+fi
+
 #=================================================
 # RESTORE SYSTEM CONFIGURATIONS
 #=================================================
@@ -106,6 +120,9 @@ ynh_systemctl --service="$app-videobridge" --action="start" --log_path="/var/log
 # the standard install path applies.
 _install_pipeline_wrapper
 _install_auto_record
+if [[ -n "${recorder_password:-}" ]]; then
+    _write_recorder_credentials "$recorder_user" "$domain" "$recorder_password"
+fi
 if ! _build_gst_meet 2>&1 | tee -a /var/log/jitsi-recorder/build.log; then
     ynh_print_warn "gst-meet build failed during restore — see /var/log/jitsi-recorder/build.log"
 fi

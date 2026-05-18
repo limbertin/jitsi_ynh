@@ -8,6 +8,9 @@ Requires=prosody.service
 [Service]
 Type=simple
 EnvironmentFile=-/etc/jitsi-recorder/config
+# Secrets (mode 0600). Loaded AFTER config so admin-readable settings can't
+# accidentally shadow XMPP_USERNAME / XMPP_PASSWORD.
+EnvironmentFile=-/etc/jitsi-recorder/credentials
 
 # recorder-pipeline.sh takes <room> <output-file> [<mode>]. The systemd
 # template gives us %i = sanitized instance name (the room localpart).

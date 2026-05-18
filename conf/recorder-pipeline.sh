@@ -12,17 +12,21 @@
 #                                    now this falls back to audio_only with a warning.
 #          disabled                  exit 0 immediately, no recording
 #
-# Environment overrides:
-#   XMPP_HOST       default: meet.essentialenergy.com.br
-#   GST_MEET_BIN    default: /opt/jitsi-recorder/bin/gst-meet
-#   LOW_MEM_KB      default: 256000 (256 MB)    force audio_only below this MemAvailable
-#   XMPP_GUEST      default: guest.${XMPP_HOST}
-#                   On YNH Jitsi, anonymous auth lives on this vhost; main vhost
-#                   requires internal_hashed (used by jicofo/jvb only).
-#   MUC_DOMAIN      default: conference.${XMPP_HOST}
-#   FOCUS_JID       default: focus.${XMPP_HOST}  (the client_proxy COMPONENT address,
-#                   NOT focus@auth.* which is the user JID). YNH Jitsi routes through
-#                   the component proxy declared in prosody.cfg.lua.
+# Environment overrides (set by /etc/jitsi-recorder/config + /credentials, or by hand):
+#   XMPP_HOST          default: meet.essentialenergy.com.br
+#   GST_MEET_BIN       default: /opt/jitsi-recorder/bin/gst-meet
+#   LOW_MEM_KB         default: 256000 (256 MB)  force audio_only below this MemAvailable
+#   MUC_DOMAIN         default: conference.${XMPP_HOST}
+#   FOCUS_JID          default: focus.${XMPP_HOST}  (client_proxy component, NOT user JID).
+#
+# CREDENTIALED AUTH (Phase 6, required by jicofo secure-domain mode):
+#   XMPP_USERNAME      e.g. "recorder"
+#   XMPP_AUTH_DOMAIN   the recorder vhost, e.g. "recorder.${XMPP_HOST}"
+#   XMPP_PASSWORD      the recorder user's password
+# If all three are set, the wrapper authenticates as the recorder user — required
+# for jicofo to allocate a conference. If any are missing, it falls back to
+# anonymous on guest.${XMPP_HOST} and logs a warning (will fail with secure-domain
+# mode but useful for diagnostic isolation).
 
 set -euo pipefail
 
@@ -31,11 +35,15 @@ OUT="${2:?output file path required as arg 2}"
 MODE="${3:-audio_only}"
 
 XMPP_HOST="${XMPP_HOST:-meet.essentialenergy.com.br}"
-XMPP_GUEST="${XMPP_GUEST:-guest.${XMPP_HOST}}"
 MUC_DOMAIN="${MUC_DOMAIN:-conference.${XMPP_HOST}}"
 FOCUS_JID="${FOCUS_JID:-focus.${XMPP_HOST}}"
 GST_MEET_BIN="${GST_MEET_BIN:-/opt/jitsi-recorder/bin/gst-meet}"
 LOW_MEM_KB="${LOW_MEM_KB:-256000}"
+
+# Credentials (Phase 6): may come from EnvironmentFile=/etc/jitsi-recorder/credentials.
+XMPP_USERNAME="${XMPP_USERNAME:-}"
+XMPP_AUTH_DOMAIN="${XMPP_AUTH_DOMAIN:-}"
+XMPP_PASSWORD="${XMPP_PASSWORD:-}"
 
 log() { echo "[recorder $$] $*"; }
 
@@ -85,11 +93,32 @@ log "pipeline: $PIPELINE"
 
 # exec replaces the bash process so systemd's TERM signal reaches gst-meet directly,
 # letting it close the file cleanly when the room empties or the unit stops.
-exec "$GST_MEET_BIN" \
-    --web-socket-url="wss://${XMPP_HOST}/xmpp-websocket" \
-    --xmpp-domain="$XMPP_GUEST" \
-    --muc-domain="$MUC_DOMAIN" \
-    --focus-jid="$FOCUS_JID" \
-    --room-name="$ROOM" \
-    --nick=recorder \
-    --recv-pipeline="$PIPELINE"
+# XMPP_AUTH_DOMAIN defaults to the main vhost (XMPP_HOST) — the recorder user
+# authenticates via the YNH LDAP backend there, and its from-JID domain matches
+# jicofo's login-url so conference allocation is accepted under secure-domain.
+: "${XMPP_AUTH_DOMAIN:=$XMPP_HOST}"
+
+if [[ -n "$XMPP_USERNAME" && -n "$XMPP_PASSWORD" ]]; then
+    log "authenticating as $XMPP_USERNAME@$XMPP_AUTH_DOMAIN"
+    exec "$GST_MEET_BIN" \
+        --web-socket-url="wss://${XMPP_HOST}/xmpp-websocket" \
+        --xmpp-domain="$XMPP_AUTH_DOMAIN" \
+        --xmpp-username="$XMPP_USERNAME" \
+        --xmpp-password="$XMPP_PASSWORD" \
+        --muc-domain="$MUC_DOMAIN" \
+        --focus-jid="$FOCUS_JID" \
+        --room-name="$ROOM" \
+        --nick=recorder \
+        --recv-pipeline="$PIPELINE"
+else
+    log "WARN: no XMPP credentials in env, falling back to anonymous on guest.${XMPP_HOST}"
+    log "WARN: this WILL fail under jicofo secure-domain mode (authentication.enabled=true)"
+    exec "$GST_MEET_BIN" \
+        --web-socket-url="wss://${XMPP_HOST}/xmpp-websocket" \
+        --xmpp-domain="guest.${XMPP_HOST}" \
+        --muc-domain="$MUC_DOMAIN" \
+        --focus-jid="$FOCUS_JID" \
+        --room-name="$ROOM" \
+        --nick=recorder \
+        --recv-pipeline="$PIPELINE"
+fi

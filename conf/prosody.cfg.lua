@@ -73,6 +73,11 @@ VirtualHost "guest.__DOMAIN__"
     authentication = "anonymous"
     c2s_require_encryption = false
 
+-- Recorder bot uses the MAIN vhost via the existing LDAP backend; jicofo's
+-- XMPPDomainAuthAuthority requires the from-JID's domain to equal login-url,
+-- so a separate recorder.* vhost won't satisfy authentication.enabled=true.
+-- scripts/install provisions a YunoHost user "recorder" — see FORK.md.
+
 Component "conference.__DOMAIN__" "muc"
     restrict_room_creation = true
     storage = "memory"

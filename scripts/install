@@ -128,6 +128,24 @@ prosodyctl register "$focus_user" "auth.$domain" "$focus_password"
 prosodyctl register "$videobridge_user" "auth.$domain" "$videobridge_secret"
 prosodyctl mod_roster_command subscribe "$focus_user.$domain" "$focus_user@auth.$domain"
 
+# Recorder bot needs to authenticate against jicofo's secure-domain mode. The
+# main vhost (meet.<domain>) uses LDAP against YunoHost's directory, so we
+# create a YunoHost user "recorder" rather than a prosody-local user. Its
+# from-JID = recorder@meet.<domain> matches jicofo's login-url and is accepted
+# by XMPPDomainAuthAuthority.
+recorder_user="recorder"
+recorder_password=$(ynh_string_random --length=24)
+ynh_app_setting_set --key=recorder_user --value="$recorder_user"
+ynh_app_setting_set --key=recorder_password --value="$recorder_password"
+if yunohost user info "$recorder_user" >/dev/null 2>&1; then
+    yunohost user update "$recorder_user" --password "$recorder_password" >/dev/null
+else
+    yunohost user create "$recorder_user" \
+        --fullname "Auto Recorder" \
+        --domain "$domain" \
+        --password "$recorder_password" >/dev/null
+fi
+
 #=================================================
 # CONFIGURE JITSI-VIDEOBRIDGE
 #=================================================
@@ -208,6 +226,7 @@ if ! _build_gst_meet 2>&1 | tee /var/log/jitsi-recorder/build.log; then
 fi
 _install_pipeline_wrapper
 _install_auto_record
+_write_recorder_credentials "$recorder_user" "$domain" "$recorder_password"
 
 #=================================================
 # END OF SCRIPT

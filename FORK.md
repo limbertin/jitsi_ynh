@@ -157,24 +157,61 @@ upstream YNH template only enables `mod_bosh`, which is why the web client
 silently falls back to long-polling). This change is benign for non-recorder
 clients — modern web clients prefer WebSocket when available.
 
-### KNOWN ISSUE: JVB health checks (separate from this fork)
+### Phase 6 — Recorder XMPP credentials (LDAP-backed YNH user)
 
-On the box where this was developed, jicofo logs **"Health check timed out
-for Bridge..."** repeatedly (32 occurrences observed pre-development). When
-this is happening, jicofo replies `service-unavailable` to conference-
-allocation IQs, including the recorder's. Symptoms in `gst-meet` logs:
+jicofo runs in **secure-domain mode** (`authentication.enabled = true`,
+`type = XMPP`, `login-url = <main vhost>`). Its `XMPPDomainAuthAuthority`
+considers a client authenticated only if the **from-JID's host equals
+`login-url`** — anonymous-on-guest is rejected at conference-allocation,
+returning `service-unavailable`.
 
+`xmpp.trusted-domains` does **not** bypass this check, contrary to common
+assumption. That list is consumed only by the Jibri detector for
+service-registration purposes; nothing in `ConferenceIqHandler` consults
+it (verified by inspecting `jicofo-common-1.0-1174.jar`).
+
+**Resolution:** the recorder authenticates as a **YunoHost user** named
+`recorder`, registered against the main vhost's LDAP backend
+(`ou=users,dc=yunohost,dc=org`). Its from-JID becomes
+`recorder@<main-vhost>` — matching `login-url` exactly. `scripts/install`
+runs:
+
+```bash
+yunohost user create recorder --fullname "Auto Recorder" \
+    --domain <main-vhost> --password $recorder_password
 ```
-INFO  Logged in anonymously
-ERROR error=focus IQ failed
-ERROR fatal (in read loop): focus IQ failed
-```
 
-This is **not** a recorder bug; it affects any client trying to allocate a
-new conference. Two- person meetings may still work because Jitsi falls back
-to P2P. To debug, check `/var/log/jitsi/jitsi-videobridge.log` and the JVB
-↔ prosody secret in `/etc/jitsi/videobridge/sip-communicator.properties`.
-Out of scope for this fork.
+with `$recorder_password` generated once and stored in YNH app settings.
+`scripts/upgrade` is idempotent — re-applies the stored password via
+`yunohost user update`. `scripts/remove` purges with
+`yunohost user delete recorder --purge`.
+
+**Why not a separate prosody vhost** (e.g., `recorder.<domain>` with
+`internal_hashed`): tried first, abandoned. Jicofo's auth check is
+strictly domain-equality against `login-url`; a recorder on a non-login-url
+vhost is treated as "unauthenticated guest" and rejected.
+
+**Secret storage:** credentials live in `/etc/jitsi-recorder/credentials`
+(mode `0600 root:root`, sourced by the systemd unit as a second
+`EnvironmentFile=`). Separate from `/etc/jitsi-recorder/config` (world-
+readable, managed by `config_panel`) so the password never lands in any
+binding the YNH web UI can read.
+
+**Tradeoff:** the recorder user shows up in `yunohost user list`. You can
+exclude it from per-app permissions if other apps' default group bindings
+expose unintended surface — `yunohost user group update`. Not done
+automatically by this fork.
+
+### KNOWN ISSUE (resolved): JVB health-check timeouts
+
+Early development saw 32 health-check timeouts in `jitsi-jicofo.log`. Those
+were transient — caused by the service-stop/restart cycle done to free RAM
+during Phase 2's gst-meet build. Once services were back up and prosody/jvb
+had reconnected cleanly, the timeouts stopped (~20:54 the day they started).
+The pre-existing JVB issue I initially suspected does not exist.
+
+The actual blocker uncovered while debugging was jicofo's secure-domain
+authentication, addressed by Phase 6 above.
 
 ### Phase 4 — Prosody trigger + systemd template + retention cron
 
