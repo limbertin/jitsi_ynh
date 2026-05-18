@@ -67,6 +67,32 @@ services = ["__APP__-jicofo","__APP__-videobridge"]
         help = "On computer, if activated, the etherpad shared document will be automatically open."
         type = "boolean"
 
+    [main.autorecord]
+    name = "Auto-recording (gst-meet)"
+
+        [main.autorecord.recording_mode]
+        ask.en = "Recording mode"
+        bind = "RECORDING_MODE:/etc/jitsi-recorder/config"
+        type = "select"
+        choices.audio_only = "Audio only (Opus, ~80 MB RAM)"
+        choices.smart_video = "Smart video — screen-share + speaker fallback (not yet implemented; falls back to audio_only)"
+        choices.disabled = "Disabled"
+        help = "Auto-record is triggered by the prosody mod_auto_record on the conference component when the target room fills past auto_record_min_occupants. Changes here take effect on the next recorder start — no restart needed."
+
+        [main.autorecord.retention_days]
+        ask.en = "Retention days"
+        bind = "RETENTION_DAYS:/etc/jitsi-recorder/config"
+        type = "number"
+        min = 0
+        help = "Daily cron deletes .webm recordings older than this. Set to 0 to disable retention."
+
+        [main.autorecord.low_mem_kb]
+        ask.en = "Low-memory fallback threshold (KB)"
+        bind = "LOW_MEM_KB:/etc/jitsi-recorder/config"
+        type = "number"
+        min = 100000
+        help = "If MemAvailable at recorder-start is below this many KB, the recorder is forced to audio_only mode regardless of the configured mode. Cheap insurance against OOM mid-call."
+
     [main.whiteboard]
     name = "Whiteboard integration"
         [main.whiteboard.whiteboard_enabled]

@@ -55,6 +55,14 @@ ynh_app_setting_set --key=whiteboard_collabserverbaseurl --value="$whiteboard_co
 whiteboard_userlimit=25
 ynh_app_setting_set --key=whiteboard_userlimit --value="$whiteboard_userlimit"
 
+# Auto-record (Phase 5). Defaults match conf/jitsi-recorder.config.
+recording_mode="audio_only"
+ynh_app_setting_set --key=recording_mode --value="$recording_mode"
+retention_days=365
+ynh_app_setting_set --key=retention_days --value="$retention_days"
+low_mem_kb=256000
+ynh_app_setting_set --key=low_mem_kb --value="$low_mem_kb"
+
 
 #=================================================
 # CREATE DEDICATED USER

@@ -28,6 +28,10 @@ ynh_app_setting_set_default --key=etherpad_openshareddocumentonjoin --value="fal
 ynh_app_setting_set_default --key=whiteboard_enabled --value="false"
 ynh_app_setting_set_default --key=whiteboard_collabserverbaseurl --value=""
 ynh_app_setting_set_default --key=whiteboard_userlimit --value="25"
+# Auto-record defaults (Phase 5)
+ynh_app_setting_set_default --key=recording_mode --value="audio_only"
+ynh_app_setting_set_default --key=retention_days --value="365"
+ynh_app_setting_set_default --key=low_mem_kb --value="256000"
 
 gpasswd --add prosody "$app"
 gpasswd --add www-data "$app"

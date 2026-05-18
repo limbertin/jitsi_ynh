@@ -176,14 +176,49 @@ to P2P. To debug, check `/var/log/jitsi/jitsi-videobridge.log` and the JVB
 ↔ prosody secret in `/etc/jitsi/videobridge/sip-communicator.properties`.
 Out of scope for this fork.
 
-### Phases 4–5 (planned)
+### Phase 4 — Prosody trigger + systemd template + retention cron
 
-- Phase 4: Prosody `mod_auto_record.lua` watches `muc-occupant-joined` for
-  the configured room and launches `jitsi-recorder@<room>.service`. Plus a
-  retention cron.
-- Phase 5: `config_panel.toml` `[main.autorecord]` section exposing mode,
-  room name, retention, and the low-memory fallback threshold.
+* `conf/mod_auto_record.lua` — Prosody MUC plugin hooked on `muc-occupant-
+  joined` and `-left`. Counts "real" participants (excludes focus, jvb, the
+  recorder bot itself) and runs `systemctl --no-block start|stop
+  jitsi-recorder@<room>.service`. Room name is sanitized to `[A-Za-z0-9_-]+`
+  before going to `os.execute`.
+* `conf/jitsi-recorder@.service` — systemd template (`%i = room name`).
+  EnvironmentFile `/etc/jitsi-recorder/config`. Composes output path inline
+  with `date -u`. `MemoryMax=400M`, `CPUQuota=120%` to fence the bot from
+  OOM-ing the box. SIGTERM-on-stop with 20s grace so webmmux can flush.
+* `conf/jitsi-recorder-retention.cron` — daily cleanup. Defensive against
+  `RETENTION_DAYS=0`/non-numeric values.
+* `conf/jitsi-recorder.config` — defaults. `_install_recorder_config`
+  preserves admin edits — only deploys defaults when the file is absent.
+
+The plugin is dropped into `/var/lib/jitsi-recorder/prosody-plugins/`, which
+the fork adds as a second `plugin_paths` entry so the module survives
+`_setup_sources`'s `ynh_safe_rm` of the meet-web tree.
+
+### Phase 5 — config_panel knobs
+
+`[main.autorecord]` section in `config_panel.toml` exposes:
+
+| Setting | Type | Default | Persisted to |
+|---|---|---|---|
+| `recording_mode` | select (audio_only / smart_video / disabled) | `audio_only` | `RECORDING_MODE=` in `/etc/jitsi-recorder/config` |
+| `retention_days` | number | `365` | `RETENTION_DAYS=` |
+| `low_mem_kb` | number | `256000` | `LOW_MEM_KB=` |
+
+Changes take effect on the **next** recorder start — no service restart
+needed, because the systemd unit re-reads `/etc/jitsi-recorder/config` on
+each instance launch.
+
+**What's deliberately NOT in the config panel:** the target room name. It's
+set in `conf/prosody.cfg.lua` as `auto_record_room = "equipe"`. Changing it
+requires editing that template + `yunohost app upgrade` to redeploy the
+prosody config + restart prosody. If you need to change it, do that
+manually; making it a panel toggle would silently fail until the upgrade.
 
 ### Phase 3b (deferred indefinitely)
 
-Smart-video Rust patch on `gst-meet/src/main.rs`. Tracked but not scheduled.
+Smart-video Rust patch on `gst-meet/src/main.rs` (screen-share priority,
+dominant-speaker fallback). Tracked in task #6 but not scheduled. Until
+landed, `smart_video` mode in `recording_mode` falls back to `audio_only`
+with a warning in `/var/log/jitsi-recorder/runtime.log`.
