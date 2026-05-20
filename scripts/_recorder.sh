@@ -249,7 +249,9 @@ _install_sudoers_rule() {
     # access and os.execute("systemctl ...") would fail silently without this.
     cat > "$RECORDER_SUDOERS" <<'EOF'
 # Managed by jitsi_ynh fork (Essential Energy). Removed by scripts/remove.
-prosody ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block start jitsi-recorder@*.service, /usr/bin/systemctl --no-block stop jitsi-recorder@*.service
+# restart is included: mod_auto_record uses it instead of start so that any
+# lingering gst-meet instance from a previous meeting is atomically replaced.
+prosody ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block start jitsi-recorder@*.service, /usr/bin/systemctl --no-block stop jitsi-recorder@*.service, /usr/bin/systemctl --no-block restart jitsi-recorder@*.service
 EOF
     chmod 0440 "$RECORDER_SUDOERS"
     if ! visudo -c -f "$RECORDER_SUDOERS" >/dev/null 2>&1; then
