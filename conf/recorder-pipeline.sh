@@ -108,7 +108,7 @@ if [[ -n "$XMPP_USERNAME" && -n "$XMPP_PASSWORD" ]]; then
         --muc-domain="$MUC_DOMAIN" \
         --focus-jid="$FOCUS_JID" \
         --room-name="$ROOM" \
-        --nick=recorder \
+        --nick="🎙 Gravando" \
         --recv-pipeline="$PIPELINE"
 else
     log "WARN: no XMPP credentials in env, falling back to anonymous on guest.${XMPP_HOST}"
@@ -119,6 +119,6 @@ else
         --muc-domain="$MUC_DOMAIN" \
         --focus-jid="$FOCUS_JID" \
         --room-name="$ROOM" \
-        --nick=recorder \
+        --nick="🎙 Gravando" \
         --recv-pipeline="$PIPELINE"
 fi
